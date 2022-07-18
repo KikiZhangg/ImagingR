@@ -28,20 +28,12 @@ ui <- navbarPage(
   dashboardHeader(title = h5("Imaging Dashboard"),
                   titleWidth = 8
                   ),
-  dashboardSidebar(
-    sidebarMenu(
-        menuItem("Single Channel", tabName = "single", icon = icon("brain")),
-        menuItem("Multi-Channel", tabName = "multi", icon = icon("microscope"))
-    )
-  ),
 
   # Sidebar with a slider input for number of bins
  
   dashboardBody(
-    tabItems(
-      tabItem(tabName = "single",
         fluidRow(
-          fileInput("imgFile", label = " Choose Image", multiple = TRUE), # upload image file 
+          fileInput("imgFile", label = " Choose Image (.tif)", multiple = TRUE), # upload image file 
           column(width = 4,
              # selectInput("dataset",
              #              label = "Choose a dataset",
@@ -58,7 +50,7 @@ ui <- navbarPage(
               sliderInput("minimum",
                           label = "Choose Minimum",
                           min = 0,
-                          max = 6000,
+                          max = 3000,
                           value = 500,
                           step = 20
                           ),
@@ -66,11 +58,12 @@ ui <- navbarPage(
               sliderInput("maximum",
                           label = "Choose Maximum",
                           min = 0,
-                          max = 6000,
+                          max = 7000,
                           value = 2000,
                           step = 20
                           )
       )
+      
     ),
 
     # Show a plot/image
@@ -78,27 +71,28 @@ ui <- navbarPage(
                box(width = 4, title = h6("Image Stack"), status = 'primary',
                    displayOutput("actualImage")
                    ),
-               box(width = 4, title = h6("Select ROI"), status = 'warning',
-                   plotlyOutput("meanStack")
+               
+               box(width = 8, 
+                   dygraphOutput("dygraph")
                )
 
       ),
     
         fluidRow(
-               box(width = 4, 
-                    dygraphOutput("dygraph")
+               box(width = 4, title = h6("Select ROI"), status = 'warning',
+                  plotlyOutput("meanStack")
                 ),
-               box(width = 4, 
+
+               box(width = 5, title = h6("ROI Info"),
                    verbatimTextOutput("info")
                )
+               
             )
 
-  )
-  )
-  )
-)
-  
-  
+           )
+     )
+
+
   
   
 
@@ -109,9 +103,9 @@ server <- function(input, output, session) {
   # show image file output
   output$files <- renderTable(input$imgFile)
   # reactive values
-  glob <- reactiveValues(img = NULL, imgpath = "", nFrame = 1, 
-                         time = NULL, mean = list(), df = NULL, don = NULL, projImg = NULL) 
-  
+  glob <- reactiveValues(img = NULL, imgpath = "", nFrame = 1,
+                         time = NULL, mean1 = list(), mean2 = list(), df = NULL,
+                         df1 = NULL, df2 = NULL, don = NULL, don1 = NULL, don2 = NULL, projImg = NULL) 
   
   # update minimum
   observeEvent(input$minimum,{
@@ -144,9 +138,6 @@ server <- function(input, output, session) {
     )
   
 
-
-
-
   observeEvent(input$imgFile,{
     output$actualImage <-renderDisplay({
       ijtiff::display(newImg(), method = "browser")   #display image
@@ -156,12 +147,12 @@ server <- function(input, output, session) {
         config(modeBarButtonsToAdd = c("drawcircle", "drawrect", "eraseshape")) %>%
         event_register("plotly_relayout")
     })
-    
   })
   
   
   # reactive value containing ROI coordinates
-  crop <- reactiveVal()
+  crop1 <- reactiveVal()
+  crop2 <- reactiveVal()
   
   # get relayout info from tge plot
   observeEvent(event_data("plotly_relayout", source = "A"),{
@@ -174,45 +165,70 @@ server <- function(input, output, session) {
           ymax = d$"shapes[0].y0",
           ymin = d$"shapes[0].y1"
         )
+        crop1(val)
       }
-      crop(val)
+      
+      
+      if(!is.null(d$"shapes[1].x0")){
+        val <- list(
+          xmin = d$"shapes[1].x0",
+          xmax = d$"shapes[1].x1",
+          ymax = d$"shapes[1].y0",
+          ymin = d$"shapes[1].y1"
+        )
+        crop2(val)
+      }
+      
+      
   })
   
-
   
 # compute time stamps and mean value of ROI    
   observeEvent({
     input$time
-    crop()},{
-      glob$mean <- seg(glob$img, crop()$xmin, crop()$xmax, crop()$ymin, crop()$ymax, glob$nFrame)
+    crop1()},{
+      glob$mean1 <- seg(glob$img, crop1()$xmin, crop1()$xmax, crop1()$ymin, crop1()$ymax, glob$nFrame)
       glob$time <- format(seq(as.POSIXct(input$time, tz = 'GMT')
                         , length.out = dim(newImg())[4], by = '1 min'),'%Y-%m-%d %H:%M') # generate time stamps
       glob$time <- as.POSIXct(glob$time)
 
-      glob$df <- data.frame(time = glob$time, mean = unlist(glob$mean))
-      glob$don <- xts(x = glob$df$mean, order.by = glob$df$time)
+      glob$df1 <- data.frame(time = glob$time, mean = unlist(glob$mean1))
+      glob$don1 <- xts(x = glob$df1$mean, order.by = glob$df1$time)
 
   })
   
+  
+  observeEvent(crop2(),{
+      glob$mean2 <- seg(glob$img, crop2()$xmin, crop2()$xmax, crop2()$ymin, crop2()$ymax, glob$nFrame)
+      glob$df2 <- data.frame(time = glob$time, mean = unlist(glob$mean2))
+      glob$don2 <- xts(x = glob$df2$mean, order.by = glob$df2$time)
+    })
+
+  
   output$info <- renderPrint({
-    glob$df
+    cbind(glob$df1, glob$df2)
   })
+  
   
   
   # time series plot with ROI
   output$dygraph <- renderDygraph({
-    req(glob$don)
-    dygraph(glob$don,
+    req(glob$don1)
+    dygraph(cbind(glob$don1,glob$don2),
             main = "Mean Intensity of ROI Over Time",
             ylab = "Mean",
             xlab = "Time") %>%
+      dySeries("glob.don1", label = "ROI1") %>%
+      dySeries("glob.don2", label = "ROI2") %>%
+      dyAxis("x", drawGrid = FALSE) %>%
+      dyOptions(colors = RColorBrewer::brewer.pal(3, "Set2")) %>%
       dyRangeSelector() %>%
       dyOptions(digitsAfterDecimal = 7)
-  })
-    
-  
-}
+    }
+  )
 
+
+}
 
 # Run the application
 shinyApp(ui = ui, server = server)
