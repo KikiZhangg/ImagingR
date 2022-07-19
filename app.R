@@ -22,19 +22,23 @@ source("helpers.R")
 
 
 # Define UI for application
-ui <- navbarPage(
+ui <-fluidPage(
+  tags$head(
+  tags$link(rel = "stylesheet", type = "text/css", href = "custom.css")),
+  # add the name of the tab you want to use as title in data-value),
+  
+  navbarPage(
+  title = "Time-Series Dashboard",
   theme = bs_theme(bootswatch = "cyborg"),
   # title
-  dashboardHeader(title = h5("Imaging Dashboard"),
-                  titleWidth = 8
-                  ),
+  dashboardSidebar(),
 
-  # Sidebar with a slider input for number of bins
+  # Sidebar with a slider input for number of bins]
  
-  dashboardBody(
-        fluidRow(
-          fileInput("imgFile", label = " Choose Image (.tif)", multiple = TRUE), # upload image file 
-          column(width = 4,
+    dashboardBody(
+          fluidRow(
+            fileInput("imgFile", label = " Choose Image (.tif)", multiple = TRUE), # upload image file 
+            column(width = 4,
              # selectInput("dataset",
              #              label = "Choose a dataset",
              #              choices = list("rst1","rst2"),
@@ -49,48 +53,49 @@ ui <- navbarPage(
              
               sliderInput("minimum",
                           label = "Choose Minimum",
-                          min = 0,
-                          max = 3000,
-                          value = 500,
-                          step = 20
+                          min = 5000,
+                          max = 30000,
+                          value = 10000,
+                          step = 100
                           ),
 
               sliderInput("maximum",
                           label = "Choose Maximum",
-                          min = 0,
-                          max = 7000,
-                          value = 2000,
-                          step = 20
+                          min = 50000,
+                          max = 400000,
+                          value = 200000,
+                          step = 100
                           )
-      )
+            )
       
     ),
 
     # Show a plot/image
-        fluidRow(
-               box(width = 4, title = h6("Image Stack"), status = 'primary',
+          fluidRow(
+                box(width = 4, title = h6("Image Stack"), status = 'primary',
                    displayOutput("actualImage")
                    ),
                
-               box(width = 8, 
+                box(width = 8, 
                    dygraphOutput("dygraph")
                )
 
       ),
     
-        fluidRow(
-               box(width = 4, title = h6("Select ROI"), status = 'warning',
+          fluidRow(
+                box(width = 4, title = h6("Select ROI"), status = 'warning',
                   plotlyOutput("meanStack")
                 ),
 
-               box(width = 5, title = h6("ROI Info"),
+                box(width = 4, title = h6("ROI Info"),
+                   downloadButton("downloadData", "Download Data"),
                    verbatimTextOutput("info")
                )
-               
+              )
             )
-
-           )
-     )
+  )
+)
+  
 
 
   
@@ -154,7 +159,7 @@ server <- function(input, output, session) {
   crop1 <- reactiveVal()
   crop2 <- reactiveVal()
   
-  # get relayout info from tge plot
+  # get relayout info from the plot
   observeEvent(event_data("plotly_relayout", source = "A"),{
       d <- event_data("plotly_relayout", source = "A")
       val <- NULL
@@ -205,10 +210,28 @@ server <- function(input, output, session) {
     })
 
   
-  output$info <- renderPrint({
-    cbind(glob$df1, glob$df2)
-  })
+  observeEvent({
+    crop1()
+    crop2()}, {
+      mydata <- cbind(glob$df1, glob$df2)
+      df <- mydata[-3]
+      colnames(df) <- c('time','ROI1 mean','ROI2 mean')
+      output$info <- renderPrint({
+        df
+      })
+      
+
+      output$downloadData <- downloadHandler(
+        filename = function() {
+          paste("myData-", Sys.Date(), ".csv", sep = "")
+        },
+        content = function(file){
+          write.csv(df, file, row.names = FALSE)
+        })
+    }
+  )
   
+
   
   
   # time series plot with ROI
@@ -226,8 +249,9 @@ server <- function(input, output, session) {
       dyOptions(digitsAfterDecimal = 7)
     }
   )
+  
 
-
+  
 }
 
 # Run the application
