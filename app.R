@@ -28,7 +28,7 @@ ui <-fluidPage(
   # add the name of the tab you want to use as title in data-value),
   
   navbarPage(
-  title = "Time-Series Dashboard",
+  title = "Time Series Dashboard",
   theme = bs_theme(bootswatch = "cyborg"),
   # title
   dashboardSidebar(),
@@ -37,7 +37,14 @@ ui <-fluidPage(
  
     dashboardBody(
           fluidRow(
-            fileInput("imgFile", label = " Choose Image (.tif)", multiple = TRUE), # upload image file 
+            column(width = 3,
+                   fileInput("imgFile", label = " Choose Image (.tif)", multiple = TRUE), # upload image file 
+                   
+                   radioButtons("channel_sel", label = "Select Channel to Display",
+                                choices = list("1st Channel" = 1, "2nd Channel" = 2, "3rd Channel" = 3), 
+                                selected = 1)
+            ),
+            
             column(width = 4,
              # selectInput("dataset",
              #              label = "Choose a dataset",
@@ -108,7 +115,7 @@ server <- function(input, output, session) {
   # show image file output
   output$files <- renderTable(input$imgFile)
   # reactive values
-  glob <- reactiveValues(img = NULL, imgpath = "", nFrame = 1,
+  glob <- reactiveValues(img = NULL, imgpath = "", nFrame = 1, nChannel = 1,
                          time = NULL, mean1 = list(), mean2 = list(), df = NULL,
                          df1 = NULL, df2 = NULL, don = NULL, don1 = NULL, don2 = NULL, projImg = NULL) 
   
@@ -135,18 +142,31 @@ server <- function(input, output, session) {
     input$maximum},{
     glob$imgPath <- input$imgFile$datapath   # set path
     glob$nFrame <- dim(read_tif(glob$imgPath))[4]  # number of frames
+    glob$nChannel <- dim(read_tif(glob$imgPath))[3] # number of channels 
     glob$img <- read_tif(glob$imgPath)      # read tiff image
-    glob$img <- scaling(glob$img, input$minimum, input$maximum)  # scale the image
-    glob$projImg <- EBImage::rotate(apply(glob$img, c(2,1), mean), angle = 90)
+    
+    # 1 channel
+    if(glob$nChannel == 1){
+      glob$img <- scaling(glob$img, input$minimum, input$maximum)  # scale the image
+      glob$projImg <- EBImage::rotate(apply(glob$img, c(2,1), mean), angle = 90)
     return(glob$img)
     }
-    )
+    
+    # multi-channel
+    else{
+      glob$projImg <- EBImage::rotate(apply(glob$img, c(2,1), mean), angle = 90)
+    return(glob$img[])
+    }
+    
+    })
   
 
   observeEvent(input$imgFile,{
-    output$actualImage <-renderDisplay({
+      output$actualImage <-renderDisplay({
       ijtiff::display(newImg(), method = "browser")   #display image
-  })
+      })
+    
+    
     output$meanStack <- renderPlotly({
       p <- plot_ly(z= glob$projImg, type = "heatmap", source = "A", height = 490) %>%
         config(modeBarButtonsToAdd = c("drawcircle", "drawrect", "eraseshape")) %>%
@@ -217,7 +237,7 @@ server <- function(input, output, session) {
       df <- mydata[-3]
       colnames(df) <- c('time','ROI1 mean','ROI2 mean')
       output$info <- renderPrint({
-        df
+        head(df, 25)        # display dataframe
       })
       
 
@@ -226,7 +246,7 @@ server <- function(input, output, session) {
           paste("myData-", Sys.Date(), ".csv", sep = "")
         },
         content = function(file){
-          write.csv(df, file, row.names = FALSE)
+          write.csv(df, file, row.names = FALSE)      # write df to csv file
         })
     }
   )
