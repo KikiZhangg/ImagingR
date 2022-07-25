@@ -139,7 +139,8 @@ server <- function(input, output, session) {
   newImg <- eventReactive({
     input$imgFile
     input$minimum
-    input$maximum},{
+    input$maximum
+    input$channel_sel},{
     glob$imgPath <- input$imgFile$datapath   # set path
     glob$nFrame <- dim(read_tif(glob$imgPath))[4]  # number of frames
     glob$nChannel <- dim(read_tif(glob$imgPath))[3] # number of channels 
@@ -154,8 +155,9 @@ server <- function(input, output, session) {
     
     # multi-channel
     else{
+      glob$img <- glob$img[, , as.numeric(input$channel_sel), ,drop = F]
       glob$projImg <- EBImage::rotate(apply(glob$img, c(2,1), mean), angle = 90)
-    return(glob$img[])
+    return(glob$img)
     }
     
     })
