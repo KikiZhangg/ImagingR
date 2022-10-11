@@ -26,7 +26,7 @@ seg <- function(img, xmin, xmax, ymin, ymax, nFrame){
 
 
 # plot the cross correlation 
-ccf_ly <- function(series1= NULL, series2= NULL){
+ccf_ly <- function(series1 = NULL, series2 = NULL){
   series <- c(series1, series2)
   p_ccf <-ccf(series1, series2, lag = 60, plot=F)
   df_ccf <- with(p_ccf, data.frame(lag, acf))
@@ -41,4 +41,34 @@ ccf_ly <- function(series1= NULL, series2= NULL){
   ccf_plotly
   return(ccf_plotly)
 }
+
+
+# power spectrum
+
+power_spectrum <- function(series1 , series2, series3){
+  series1 <- series1 - mean(series1)
+  series2 <- series2 -mean(series2)
+  series3<- series3 - mean(series3)
+  n <- length(series1)
+  fs <- 1/60
+  f <- (seq_len(n)-1)*fs/n
+  dft_amp1 <- abs(fft(series1, inverse = FALSE))
+  dft_amp2 <- abs(fft(series2, inverse = FALSE))
+  dft_amp3 <- abs(fft(series3, inverse = FALSE))
+  power1 <- (dft_amp1^2)/n
+  power2 <- (dft_amp2^2)/n
+  power3 <- (dft_amp3^2)/n
+  power <- data.frame(channel = rep(c("Neuronal", "CBV", "CBF"), each = n),
+                      frequency = rep(f[1:n/2+1], 3),
+                      power = c(power1[1:n/2+1], power2[1:n/2+1], power3[1:n/2+1]))
+  
+  freq_plot <- ggplot(data = power, mapping = aes(x = frequency, y = power, color = channel))+
+    geom_line()+
+    labs(x = "Frequency (Hz)", y = "Power",
+         title = "Power Spectrum")
+
+  return(ggplotly(freq_plot))
+}
+
+
 
